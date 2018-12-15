@@ -1,23 +1,32 @@
 import * as esprima from 'esprima';
 import * as escodegen from 'escodegen';
+//var safeEval = require('safe-eval');
+import * as safeEval from 'safe-eval';
 
 const parseCode = (codeToParse) => {
-    return esprima.parseScript(codeToParse);
+    return esprima.parseScript(codeToParse, {loc:true});
 };
 
-const valueMap = {};
-var newJson;
+var valueMap = {};
+var variablesToDelete = new Set();
+var reds = [];
+var greens = [];
 
-function setJson(json) {
-    newJson = json;
+function getValueMap() {
+    return valueMap;
 }
 
 const parseByType = {
     'FunctionDeclaration': parseFunction,
     'VariableDeclaration': parseVarDec,
     'AssignmentExpression': parseAssignExp,
+    'WhileStatement': parseWhileExp,
     'IfStatement': parseIf
 };
+
+function generateCode(json) {
+    return escodegen.generate(json);
+}
 
 function substituteCode(exp){
     for(var key in exp){
@@ -31,21 +40,28 @@ function substituteCode(exp){
     removeFromJSON(exp);
 }
 
-function generateCode(json) {
-    return escodegen.generate(json);
-}
-
 function removeFromJSON(exp) {
     var i = exp.length;
     for(var j=0;j<i;j++) {
-        if (typeof exp[0] == 'object' && exp[0].hasOwnProperty('type') && isRemovable(exp)) {
-            exp.shift();
+        if (typeof exp[j] == 'object' && exp[j].hasOwnProperty('type') && isRemovable(exp,j)) {
+            //exp.shift();
+            exp.splice(j,1);
+            j--;
         }
     }
 }
 
-function isRemovable(exp){
-    return (exp[0]['type'] == 'VariableDeclaration' || exp[0]['type'] == 'ExpressionStatement');
+function isRemovable(exp,j){
+    if (exp[j]['type'] == 'VariableDeclaration'){
+        /*for(var dec in exp[j]['declarations']){
+            return variablesToDelete.has(exp[j]['declarations'][dec]['id']['name']);
+        }*/
+        return true;
+    }
+    else if(exp[j]['type'] == 'ExpressionStatement' && variablesToDelete.has(exp[j]['expression']['left']['name'])){
+        return true;
+    }
+    return false;
 }
 
 function parseFunction(exp) {
@@ -70,23 +86,42 @@ function parseAssignExp(exp) {
 }
 
 function parseIf(exp) {
-    substituteInExp(exp);
+    //substituteInExp(exp);
+    let tempMap = JSON.parse(JSON.stringify(valueMap));
+    substituteInExp(exp['test']);
+    substituteCode(exp['consequent']);
+    substituteInExp(exp['consequent']);
+    valueMap = tempMap;
+    substituteCode(exp['alternate']);
+    substituteInExp(exp['alternate']);
+    //substituteCode(exp['alternate']);
+}
+
+function parseWhileExp(exp) {
+    substituteInExp(exp['test']);
+    substituteCode(exp['body']);
+    substituteInExp(exp['body']);
 }
 
 function substituteInExp(exp) {
     for(var key in exp){
-        if(typeof exp[key] == 'object'){
+        if(isValidForSub(exp, key)){
             substituteInExp(exp[key]);
         }
         else if(existInDict(exp,key)){
             var toChange = exp['name'];
             exp['name'] = valueMap[toChange];
+            //exp['toDelete'] = true;
         }
     }
 }
 
+function isValidForSub(exp, key) {
+    return (typeof exp[key] == 'object' && !(exp.hasOwnProperty('type') && exp['type'] == 'AssignmentExpression' && key == 'left'));
+}
+
 function existInDict(exp,key){
-    return (key == 'type' && exp[key] == 'Identifier' && exp['name'] in valueMap);
+    return (exp.hasOwnProperty('type') && key == 'type' && exp[key] == 'Identifier' && exp['name'] in valueMap);
 }
 
 function generateValue(str){
@@ -94,8 +129,12 @@ function generateValue(str){
     for(var i=0;i<vars.length;i++) {
         for (var val in valueMap) {
             if(val==vars[i]){
+                if(paranthesisCheck(vars[i+1], val)){
+                    str = str.replace(val,'(' + val + ')');
+                }
                 var regex = new RegExp(vars[i], 'g');
                 str = str.replace(regex,valueMap[val]);
+                variablesToDelete.add(val);
                 break;
             }
         }
@@ -103,18 +142,74 @@ function generateValue(str){
     return str;
 }
 
-/*function replaceAllOccurences(prog) {
-    for(var variable in valueMap){
-        var regex = new RegExp(' '+variable+' ', 'g');
-        prog = prog.replace(regex,valueMap[variable]);
+function paranthesisCheck(str, val){
+    if((str == '*' || str == '/') && valueMap[val].length > 1)
+        return true;
+    return false;
+}
+
+function replaceInput(input) {
+    let values = input.split(',');
+    for(var key in valueMap){
+        valueMap[key] = valueMap[key].replace('x',values[0]);
+        valueMap[key] = valueMap[key].replace('y',values[1]);
+        valueMap[key] = valueMap[key].replace('z',values[2]);
+        valueMap[key] = safeEval(valueMap[key]);
     }
-    return prog;
-}*/
+}
 
+function findRedGreen(exp) {
+    for(var key in exp){
+        if(typeof exp[key] == 'object'){
+            findRedGreen(exp[key]);
+        }
+        else if(key == 'type' && exp[key] == 'IfStatement'){
+            substituteInExp(exp['test']);
+            fillRedGreen(safeEval(escodegen.generate(exp['test'])), exp);
+            //fillRedGreen(safeEval(escodegen.generate(exp['test']).replace()))
+        }
+    }
+}
 
-//export {replaceAllOccurences};
-export {newJson};
-export {setJson};
+function fillRedGreen(evaluated, exp){
+    if(evaluated){
+        greens.push(exp['loc']['start']['line']);
+    }
+    else{
+        reds.push(exp['loc']['start']['line']);
+    }
+}
+
+function colorIfTests(code) {
+    let codeLines = code.split('\n');
+    var elm = document.getElementById('parsedCode');
+    for(var i=0;i<codeLines.length;i++){
+        if(greens.includes(i+1)){
+            elm.insertAdjacentHTML('beforeend','<xmp style=\'background-color: green; ' +
+                'font-family: "Trebuchet MS", Arial, Helvetica, sans-serif; font-size: 20px; width: 350px\'>'
+                + codeLines[i]+'</xmp>');
+            //elm.insertAdjacentHTML('afterbegin', '<pre>bla</pre>');
+        }
+        else if(reds.includes(i+1)){
+            elm.insertAdjacentHTML('beforeend', '<xmp style=\'background-color: red; ' +
+                'font-family: "Trebuchet MS", Arial, Helvetica, sans-serif; font-size: 20px; width: 350px\'>'
+                + codeLines[i]+'</xmp>');
+        }
+        else{
+            elm.insertAdjacentHTML('beforeend',codeLines[i] + '\n');
+        }
+    }
+}
+
+function resetValueMap() {
+    valueMap = {};
+}
+
+export {resetValueMap};
+export {getValueMap};
+export {colorIfTests};
+export {findRedGreen};
+export {replaceInput};
 export {generateCode};
 export {substituteCode};
 export {parseCode};
