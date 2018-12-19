@@ -5,7 +5,7 @@ import {
     getValueMap,
     resetValueMap,
     generateCode,
-    replaceInput, findRedGreen, getGreens, getReds
+    replaceInput, findRedGreen, greens
 } from '../src/js/code-analyzer';
 
 /*describe('The javascript parser', () => {
@@ -27,6 +27,17 @@ import {
 describe('The function parser', () => {
     it('is parsing a function with parameters correctly', () => {
         substituteCode(parseCode('function foo(x, y, z){}'));
+        assert.deepEqual(getValueMap()['x'],'x');
+        assert.deepEqual(getValueMap()['y'],'y');
+        assert.deepEqual(getValueMap()['z'],'z');
+        resetValueMap();
+    });
+});
+
+describe('The return parser', () => {
+    it('is parsing a return statement correctly', () => {
+        substituteCode(parseCode('function foo(x, y, z){' +
+            'return x;}'));
         assert.deepEqual(getValueMap()['x'],'x');
         assert.deepEqual(getValueMap()['y'],'y');
         assert.deepEqual(getValueMap()['z'],'z');
@@ -132,22 +143,18 @@ describe('The replace input function', () => {
     });
 });
 
-describe('The fill red and green function', () => {
-    it('is filling arrays correctly', () => {
-        let parsed = parseCode('function foo(x,y) {\n' +
-            '    if (x < y) {\n' +
-            '        x = 1;\n' +
-            '    }\n' +
-            '    else if (x > y) {\n' +
-            '        y = 2;\n' +
-            '    }\n' +
+describe('The replace input function', () => {
+    it('is replacing correctly', () => {
+        let parsed = parseCode('let c = 1;' +
+            'if (c < 0){' +
+            '}'+
+            'if (c > 0){' +
+            'c = c + 5;' +
             '}');
         substituteCode(parsed);
-        let code = generateCode(parsed);
         replaceInput('1,2');
-        findRedGreen(parseCode(code));
-        assert.deepEqual(getGreens()[0], 2);
-        assert.deepEqual(getReds()[0], 3);
+        findRedGreen(parsed);
+        assert.deepEqual(greens[0],1);
         resetValueMap();
     });
 });

@@ -11,17 +11,10 @@ var valueMap = {};
 var variablesToDelete = new Set();
 var reds = [];
 var greens = [];
+var parameters = [];
 
 function getValueMap() {
     return valueMap;
-}
-
-function getReds() {
-    return reds;
-}
-
-function getGreens() {
-    return greens;
 }
 
 const parseByType = {
@@ -29,7 +22,8 @@ const parseByType = {
     'VariableDeclaration': parseVarDec,
     'AssignmentExpression': parseAssignExp,
     'WhileStatement': parseWhileExp,
-    'IfStatement': parseIf
+    'IfStatement': parseIf,
+    'ReturnStatement': parseReturn
 };
 
 function generateCode(json) {
@@ -92,6 +86,7 @@ function parseFunction(exp) {
     for (var i=0;i<params.length;i++){
         let key = escodegen.generate(params[i]);
         valueMap[key] = key;
+        parameters.push(key);
     }
 }
 
@@ -122,6 +117,10 @@ function parseWhileExp(exp) {
     substituteInExp(exp['test']);
     substituteCode(exp['body']);
     substituteInExp(exp['body']);
+}
+
+function parseReturn(exp) {
+    substituteInExp(exp['argument']);
 }
 
 function substituteInExp(exp) {
@@ -171,12 +170,16 @@ function paranthesisCheck(str, val){
 
 function replaceInput(input) {
     let values = input.split(',');
+    let index = 0;
     for(var key in valueMap){
-        valueMap[key] = valueMap[key].replace(new RegExp('x', 'g'), values[0]);
-        valueMap[key] = valueMap[key].replace(new RegExp('y', 'g'), values[1]);
-        valueMap[key] = valueMap[key].replace(new RegExp('z', 'g'), values[2]);
+        for(var value in parameters){
+            valueMap[key] = valueMap[key].replace(new RegExp(parameters[value], 'g'), values[index]);
+            index++;
+        }
+        index = 0;
         valueMap[key] = eval(valueMap[key]);
     }
+    parameters.length = 0;
 }
 
 function findRedGreen(exp) {
@@ -214,8 +217,8 @@ function resetValueMap() {
     valueMap = {};
 }
 
-export {getReds};
-export {getGreens};
+export {reds};
+export {greens};
 export {substituteInExp};
 export {resetValueMap};
 export {getValueMap};
@@ -225,3 +228,5 @@ export {replaceInput};
 export {generateCode};
 export {substituteCode};
 export {parseCode};
+export {variablesToDelete};
+export {valueMap};

@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import {getGreens, getReds, parseCode} from './code-analyzer';
+import {greens, reds, parseCode, variablesToDelete, resetValueMap} from './code-analyzer';
 import {substituteCode} from './code-analyzer';
 import {generateCode} from './code-analyzer';
 import {replaceInput} from './code-analyzer';
@@ -8,15 +8,17 @@ import {findRedGreen} from './code-analyzer';
 
 $(document).ready(function () {
     $('#codeSubmissionButton').click(() => {
+        reds.length = 0;
+        greens.length = 0;
+        variablesToDelete.clear();
+        resetValueMap();
         let codeToParse = $('#codePlaceholder').val();
         let inputVector = $('#inputPlaceholder').val();
         let parsedCode = parseCode(codeToParse);
-        //let old = JSON.parse(JSON.stringify(parsedCode));
-
         substituteCode(parsedCode);
+        //insertToLeftAssignment(parsedCode);
         let code = generateCode(parsedCode);
 
-        //$('#parsedCode').val(code);
         replaceInput(inputVector);
         findRedGreen(parseCode(code));
         colorIfTests(code);
@@ -28,12 +30,12 @@ function colorIfTests(code) {
     let codeLines = code.split('\n');
     var elm = document.getElementById('parsedCode');
     for(var i=0;i<codeLines.length;i++){
-        if(getGreens().includes(i+1)){
-            codeLines[i] += '   //This is green';
+        if(greens.includes(i+1)){
+            codeLines[i] += '   //This line is green';
             elm.insertAdjacentHTML('beforeend',codeLines[i] + '\n');
         }
-        else if(getReds().includes(i+1)){
-            codeLines[i] += '   //This is red';
+        else if(reds.includes(i+1)){
+            codeLines[i] += '   //This line is red';
             elm.insertAdjacentHTML('beforeend',codeLines[i] + '\n');
         }
         else{
